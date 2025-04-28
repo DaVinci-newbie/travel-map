@@ -3,39 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>中国旅行目的地随机选择</title>
-    <!-- 使用国内CDN加速 -->
-    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/leaflet/1.7.1/leaflet.min.css">
+    <title>五一目的地抽签</title>
     <style>
         body {
             margin: 0;
-            padding: 10px;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #f7f7f7;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
             height: 100vh;
             overflow: hidden;
+            background: #f5f5f5;
         }
-        #map-container {
-            position: relative;
-            height: 60vh;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }
-        #map {
+        #container {
+            display: flex;
+            flex-direction: column;
             height: 100%;
         }
+        #map {
+            flex: 1;
+            width: 100%;
+        }
         #controls {
-            background: white;
             padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            background: #fff;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
         }
         button {
             width: 100%;
             padding: 12px;
-            background: #07C160;
+            background: #4D6BFF; /* 高德主题色 */
             color: white;
             border: none;
             border-radius: 5px;
@@ -44,113 +39,182 @@
         }
         .result {
             font-size: 14px;
-            line-height: 1.5;
+            line-height: 1.6;
         }
         .highlight {
-            color: #07C160;
+            color: #4D6BFF;
             font-weight: bold;
-            font-size: 16px;
+        }
+        .loading {
+            text-align: center;
+            color: #888;
+            padding: 10px;
+        }
+        .spot-img {
+            width: 100%;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-top: 8px;
         }
     </style>
 </head>
 <body>
-    <div id="map-container">
+    <div id="container">
         <div id="map"></div>
-    </div>
-    <div id="controls">
-        <button onclick="selectRandomDestination()">🎲 随机选择目的地</button>
-        <div id="result" class="result">
-            点击按钮随机选择旅行目的地<br>
-            <span class="highlight">包含全国热门景区和旅行路线</span>
+        <div id="controls">
+            <button onclick="fetchRandomSpot()">🎲 随机推荐景点</button>
+            <div id="result" class="result">
+                <div id="loading" class="loading">正在加载高德地图数据...</div>
+                <div id="content" style="display:none">
+                    点击按钮随机抽签<br>
+                    <span class="highlight">数据来源：高德地图API</span>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- 使用国内CDN加速 -->
-    <script src="https://cdn.bootcdn.net/ajax/libs/leaflet/1.7.1/leaflet.min.js"></script>
+    <!-- 高德地图API -->
+    <script src="https://webapi.amap.com/maps?v=2.0&key=9de5d8be2e64bfcd3d709e37df3bd8b6&plugin=AMap.PlaceSearch,AMap.AutoComplete"></script>
     <script>
-        // 微信环境特殊处理
-        function setupForWeixin() {
-            // 解决微信中地图拖动问题
-            document.addEventListener('touchmove', function(e) {
-                if (e.target.closest('#map')) {
-                    e.preventDefault();
-                }
-            }, { passive: false });
-            
-            // 解决点击延迟
-            document.addEventListener('click', function(e) {
-                if (e.target.tagName === 'BUTTON') {
-                    e.preventDefault();
-                    e.target.click();
-                }
-            }, true);
-        }
-        
+        // 高德地图配置
+        const AMapConfig = {
+            key: "9de5d8be2e64bfcd3d709e37df3bd8b6", // 需替换为实际key
+            city: "全国",
+            types: "风景名胜|公园广场|博物馆" // 景点类型
+        };
+
         // 初始化地图
-        function initMap() {
-            const map = L.map('map').setView([35.8617, 104.1954], 5);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap',
-                maxZoom: 18
-            }).addTo(map);
-            
-            return map;
-        }
-        
-        // 目的地数据
-        const destinations = [
-            { name: "北京故宫", coordinates: [39.9163, 116.3903], type: "5A", region: "华北" },
-            { name: "杭州西湖", coordinates: [30.2444, 120.1294], type: "5A", region: "华东" },
-            { name: "桂林漓江", coordinates: [25.2345, 110.1799], type: "5A", region: "华南" },
-            // 其他目的地数据...
-        ];
-        
-        document.addEventListener('DOMContentLoaded', function() {
-            // 检测微信环境
-            if (/MicroMessenger/i.test(navigator.userAgent)) {
-                setupForWeixin();
-                alert("温馨提示：在微信中长按地图可以拖动查看");
-            }
-            
-            const map = initMap();
-            let currentMarker = null;
-            
-            window.selectRandomDestination = function() {
-                if (currentMarker) {
-                    map.removeLayer(currentMarker);
-                }
-                
-                const selected = destinations[Math.floor(Math.random() * destinations.length)];
-                
-                currentMarker = L.marker(selected.coordinates, {
-                    icon: L.divIcon({
-                        html: '📍',
-                        iconSize: [30, 30],
-                        className: 'custom-marker'
-                    })
-                }).addTo(map);
-                
-                currentMarker.bindPopup(`
-                    <b>${selected.name}</b><br>
-                    地区: ${selected.region}<br>
-                    类型: ${selected.type}级景区
-                `).openPopup();
-                
-                document.getElementById('result').innerHTML = `
-                    您选择的目的地是:<br>
-                    <span class="highlight">${selected.name}</span><br>
-                    位于: ${selected.region}地区
-                `;
-                
-                map.flyTo(selected.coordinates, 8, {
-                    duration: 1
-                });
-            }
-            
-            // 初始选择
-            selectRandomDestination();
+        const map = new AMap.Map('map', {
+            zoom: 5,
+            center: [114.218439, 30.554183],
+            viewMode: '2D'
         });
+
+        // 存储景点数据
+        let amapSpots = [];
+        let currentMarker = null;
+
+        // 加载高德POI数据
+        function loadAMapSpots() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('content').style.display = 'none';
+
+            // 使用高德PlaceSearch插件
+            const placeSearch = new AMap.PlaceSearch({
+                city: AMapConfig.city,
+                type: AMapConfig.types,
+                pageSize: 50, // 每页50条
+                pageIndex: 1
+            });
+
+            // 搜索全国景点（实际开发中需要分页获取所有数据）
+            placeSearch.search('公园', (status, result) => {
+                if (status === 'complete') {
+                    amapSpots = processAMapData(result.poiList.pois);
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('content').style.display = 'block';
+                    fetchRandomSpot();
+                } else {
+                    document.getElementById('loading').innerHTML = '数据加载失败，请重试';
+                }
+            });
+        }
+
+        // 处理高德POI数据
+        function processAMapData(pois) {
+            return pois.map(poi => ({
+                id: poi.id,
+                name: poi.name,
+                location: [poi.location.lng, poi.location.lat],
+                address: poi.address,
+                tel: poi.tel,
+                photos: poi.photos || [],
+                rating: poi.biz_ext.rating || '无评分'
+            }));
+        }
+
+        // 随机选择景点
+        function fetchRandomSpot() {
+            if (amapSpots.length === 0) {
+                loadAMapSpots();
+                return;
+            }
+
+            const randomSpot = amapSpots[Math.floor(Math.random() * amapSpots.length)];
+            showSpot(randomSpot);
+        }
+
+        // 显示景点详情
+        function showSpot(spot) {
+            // 清除旧标记
+            if (currentMarker) {
+                map.remove(currentMarker);
+            }
+
+            // 创建新标记
+            currentMarker = new AMap.Marker({
+                position: spot.location,
+                content: `<div style="
+                    background:#4D6BFF;
+                    color:white;
+                    padding:5px 10px;
+                    border-radius:15px;
+                    font-size:12px;
+                    white-space:nowrap">
+                    📍 ${spot.name}
+                </div>`,
+                offset: new AMap.Pixel(-15, -30)
+            });
+            currentMarker.setMap(map);
+
+            // 显示信息窗口
+            const infoWindow = new AMap.InfoWindow({
+                content: buildSpotInfo(spot),
+                offset: new AMap.Pixel(0, -30)
+            });
+            infoWindow.open(map, spot.location);
+
+            // 更新UI
+            document.getElementById('content').innerHTML = `
+                <b>${spot.name}</b><br>
+                <span class="highlight">评分: ${spot.rating}</span><br>
+                ${spot.address}<br>
+                ${spot.tel ? '电话: ' + spot.tel : ''}
+                ${spot.photos.length > 0 ? 
+                    `<img src="${spot.photos[0].url}" class="spot-img">` : ''}
+            `;
+
+            // 定位到该点
+            map.setZoomAndCenter(15, spot.location);
+        }
+
+        // 构建景点信息HTML
+        function buildSpotInfo(spot) {
+            let html = `<div style="padding:5px;min-width:200px">
+                <div style="font-weight:bold">${spot.name}</div>
+                <div>地址: ${spot.address}</div>`;
+            
+            if (spot.tel) html += `<div>电话: ${spot.tel}</div>`;
+            if (spot.rating) html += `<div>评分: ${spot.rating}</div>`;
+            
+            if (spot.photos.length > 0) {
+                html += `<img src="${spot.photos[0].url}" style="width:100%;margin-top:5px">`;
+            }
+            
+            html += `</div>`;
+            return html;
+        }
+
+        // 微信适配初始化
+        function init() {
+            if (typeof WeixinJSBridge !== 'undefined') {
+                document.addEventListener('WeixinJSBridgeReady', loadAMapSpots, false);
+            } else {
+                loadAMapSpots();
+            }
+        }
+        window.onload = init;
     </script>
 </body>
 </html>
