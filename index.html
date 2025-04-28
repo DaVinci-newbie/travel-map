@@ -64,157 +64,129 @@
         <div id="map"></div>
         <div id="controls">
             <button onclick="fetchRandomSpot()">🎲 随机推荐景点</button>
-            <div id="result" class="result">
-                <div id="loading" class="loading">正在加载高德地图数据...</div>
-                <div id="content" style="display:none">
-                    点击按钮随机抽签<br>
-                    <span class="highlight">数据来源：高德地图API</span>
-                </div>
-            </div>
+            <button onclick="locateUser()">📍 我的位置</button>
+            <div id="result"></div>
         </div>
     </div>
 
-    <!-- 高德地图API -->
-    <script src="https://webapi.amap.com/maps?v=2.0&key=9de5d8be2e64bfcd3d709e37df3bd8b6&plugin=AMap.PlaceSearch,AMap.AutoComplete"></script>
-    <script>
-        // 高德地图配置
-        const AMapConfig = {
-            key: "9de5d8be2e64bfcd3d709e37df3bd8b6", // 需替换为实际key
-            city: "全国",
-            types: "风景名胜|公园广场|博物馆" // 景点类型
-        };
-
-        // 初始化地图
-        const map = new AMap.Map('map', {
-            zoom: 5,
-            center: [114.218439, 30.554183],
-            viewMode: '2D'
-        });
-
-        // 存储景点数据
-        let amapSpots = [];
-        let currentMarker = null;
-
-        // 加载高德POI数据
-        function loadAMapSpots() {
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('content').style.display = 'none';
-
-            // 使用高德PlaceSearch插件
-            const placeSearch = new AMap.PlaceSearch({
-                city: AMapConfig.city,
-                type: AMapConfig.types,
-                pageSize: 50, // 每页50条
-                pageIndex: 1
+        <!-- 高德地图API -->
+        <script src="https://webapi.amap.com/maps?v=2.0&key=9de5d8be2e64bfcd3d709e37df3bd8b6&plugin=AMap.PlaceSearch,AMap.Geolocation"></script>
+        <script>
+            // 初始化地图
+            const map = new AMap.Map('map', {
+                zoom: 5,
+                center: [116.397, 39.918]
             });
-
-            // 搜索全国景点（实际开发中需要分页获取所有数据）
-            placeSearch.search('公园', (status, result) => {
-                if (status === 'complete') {
-                    amapSpots = processAMapData(result.poiList.pois);
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('content').style.display = 'block';
-                    fetchRandomSpot();
-                } else {
-                    document.getElementById('loading').innerHTML = '数据加载失败，请重试';
+    
+            // 添加控件
+            AMap.plugin(['AMap.ToolBar', 'AMap.Scale'], function() {
+                map.addControl(new AMap.ToolBar());
+                map.addControl(new AMap.Scale());
+            });
+    
+            // 存储景点数据
+            let amapSpots = [];
+            let currentMarker = null;
+    
+            // 正确的位置获取方法
+            function locateUser() {
+                const geolocation = new AMap.Geolocation({
+                    enableHighAccuracy: true,
+                    timeout: 5000
+                });
+                
+                geolocation.getCurrentPosition((status, result) => {
+                    if (status === 'complete') {
+                        const lnglat = [result.position.lng, result.position.lat];
+                        map.setCenter(lnglat);
+                        map.setZoom(15);
+                        
+                        // 显示位置标记
+                        if (currentMarker) map.remove(currentMarker);
+                        currentMarker = new AMap.Marker({
+                            position: lnglat,
+                            content: '<div style="background:#4D6BFF;color:white;padding:5px;border-radius:50%">📍</div>'
+                        });
+                        map.add(currentMarker);
+                        
+                        // 搜索周边景点
+                        searchNearbySpots(lnglat);
+                    } else {
+                        alert('定位失败：' + result.message);
+                    }
+                });
+            }
+    
+            // 搜索周边景点
+            function searchNearbySpots(lnglat) {
+                const placeSearch = new AMap.PlaceSearch({
+                    type: '风景名胜|公园',
+                    pageSize: 20
+                });
+                
+                placeSearch.searchNearBy('', lnglat, 5000, (status, result) => {
+                    if (status === 'complete') {
+                        amapSpots = result.poiList.pois;
+                        document.getElementById('result').innerHTML = 
+                            `找到${amapSpots.length}个周边景点`;
+                    }
+                });
+            }
+    
+            // 随机推荐景点
+            function fetchRandomSpot() {
+                if (amapSpots.length === 0) {
+                    loadDefaultSpots();
+                    return;
                 }
-            });
-        }
-
-        // 处理高德POI数据
-        function processAMapData(pois) {
-            return pois.map(poi => ({
-                id: poi.id,
-                name: poi.name,
-                location: [poi.location.lng, poi.location.lat],
-                address: poi.address,
-                tel: poi.tel,
-                photos: poi.photos || [],
-                rating: poi.biz_ext.rating || '无评分'
-            }));
-        }
-
-        // 随机选择景点
-        function fetchRandomSpot() {
-            if (amapSpots.length === 0) {
-                loadAMapSpots();
-                return;
+                
+                const spot = amapSpots[Math.floor(Math.random() * amapSpots.length)];
+                showSpot(spot);
             }
-
-            const randomSpot = amapSpots[Math.floor(Math.random() * amapSpots.length)];
-            showSpot(randomSpot);
-        }
-
-        // 显示景点详情
-        function showSpot(spot) {
-            // 清除旧标记
-            if (currentMarker) {
-                map.remove(currentMarker);
+    
+            // 显示景点
+            function showSpot(spot) {
+                if (currentMarker) map.remove(currentMarker);
+                
+                currentMarker = new AMap.Marker({
+                    position: [spot.location.lng, spot.location.lat],
+                    content: `<div style="background:#FF6B00;color:white;padding:5px 10px;border-radius:15px">
+                        ${spot.name}
+                    </div>`
+                });
+                map.add(currentMarker);
+                map.setCenter([spot.location.lng, spot.location.lat]);
+                
+                // 显示详情
+                document.getElementById('result').innerHTML = `
+                    <b>${spot.name}</b><br>
+                    地址：${spot.address}<br>
+                    ${spot.tel ? '电话：' + spot.tel : ''}
+                `;
             }
-
-            // 创建新标记
-            currentMarker = new AMap.Marker({
-                position: spot.location,
-                content: `<div style="
-                    background:#4D6BFF;
-                    color:white;
-                    padding:5px 10px;
-                    border-radius:15px;
-                    font-size:12px;
-                    white-space:nowrap">
-                    📍 ${spot.name}
-                </div>`,
-                offset: new AMap.Pixel(-15, -30)
-            });
-            currentMarker.setMap(map);
-
-            // 显示信息窗口
-            const infoWindow = new AMap.InfoWindow({
-                content: buildSpotInfo(spot),
-                offset: new AMap.Pixel(0, -30)
-            });
-            infoWindow.open(map, spot.location);
-
-            // 更新UI
-            document.getElementById('content').innerHTML = `
-                <b>${spot.name}</b><br>
-                <span class="highlight">评分: ${spot.rating}</span><br>
-                ${spot.address}<br>
-                ${spot.tel ? '电话: ' + spot.tel : ''}
-                ${spot.photos.length > 0 ? 
-                    `<img src="${spot.photos[0].url}" class="spot-img">` : ''}
-            `;
-
-            // 定位到该点
-            map.setZoomAndCenter(15, spot.location);
-        }
-
-        // 构建景点信息HTML
-        function buildSpotInfo(spot) {
-            let html = `<div style="padding:5px;min-width:200px">
-                <div style="font-weight:bold">${spot.name}</div>
-                <div>地址: ${spot.address}</div>`;
-            
-            if (spot.tel) html += `<div>电话: ${spot.tel}</div>`;
-            if (spot.rating) html += `<div>评分: ${spot.rating}</div>`;
-            
-            if (spot.photos.length > 0) {
-                html += `<img src="${spot.photos[0].url}" style="width:100%;margin-top:5px">`;
+    
+            // 加载默认景点数据
+            function loadDefaultSpots() {
+                const placeSearch = new AMap.PlaceSearch({
+                    city: '全国',
+                    type: '风景名胜',
+                    pageSize: 50
+                });
+                
+                placeSearch.search('公园', (status, result) => {
+                    if (status === 'complete') {
+                        amapSpots = result.poiList.pois;
+                        fetchRandomSpot();
+                    }
+                });
             }
-            
-            html += `</div>`;
-            return html;
-        }
-
-        // 微信适配初始化
-        function init() {
-            if (typeof WeixinJSBridge !== 'undefined') {
-                document.addEventListener('WeixinJSBridgeReady', loadAMapSpots, false);
+    
+            // 微信初始化适配
+            if (/MicroMessenger/i.test(navigator.userAgent)) {
+                document.addEventListener('WeixinJSBridgeReady', loadDefaultSpots, false);
             } else {
-                loadAMapSpots();
+                window.onload = loadDefaultSpots;
             }
-        }
-        window.onload = init;
-    </script>
-</body>
-</html>
+        </script>
+    </body>
+    </html>
