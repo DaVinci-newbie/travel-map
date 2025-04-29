@@ -5,58 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>五一目的地抽签</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
-            height: 100vh;
-            overflow: hidden;
-            background: #f5f5f5;
-        }
-        #container {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        #map {
-            flex: 1;
-            width: 100%;
-        }
-        #controls {
-            padding: 15px;
-            background: #fff;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            background: #4D6BFF; /* 高德主题色 */
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            margin-bottom: 10px;
-        }
-        .result {
-            font-size: 14px;
-            line-height: 1.6;
-        }
-        .highlight {
-            color: #4D6BFF;
-            font-weight: bold;
-        }
-        .loading {
-            text-align: center;
-            color: #888;
-            padding: 10px;
-        }
-        .spot-img {
-            width: 100%;
-            height: 100px;
-            object-fit: cover;
-            border-radius: 4px;
-            margin-top: 8px;
-        }
+        body { margin: 0; padding: 0; font-family: -apple-system, sans-serif; height: 100vh; }
+        #container { display: flex; flex-direction: column; height: 100%; }
+        #map { flex: 1; width: 100%; }
+        #controls { padding: 15px; background: #fff; box-shadow: 0 -2px 10px rgba(0,0,0,0.1); }
+        button { width: 100%; padding: 12px; background: #4D6BFF; color: white; border: none; border-radius: 5px; margin-bottom: 10px; }
+        .result { font-size: 14px; line-height: 1.6; padding: 10px 0; }
+        .error { color: #FF6B00; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -64,129 +19,163 @@
         <div id="map"></div>
         <div id="controls">
             <button onclick="fetchRandomSpot()">🎲 随机推荐景点</button>
-            <button onclick="locateUser()">📍 我的位置</button>
-            <div id="result"></div>
+            <div id="result">正在初始化地图...</div>
         </div>
     </div>
 
-        <!-- 高德地图API -->
-        <script src="https://webapi.amap.com/maps?v=2.0&key=9de5d8be2e64bfcd3d709e37df3bd8b6&plugin=AMap.PlaceSearch,AMap.Geolocation"></script>
-        <script>
-            // 初始化地图
-            const map = new AMap.Map('map', {
+    <!-- 高德地图API -->
+    <script src="https://webapi.amap.com/maps?v=2.0&key=9de5d8be2e64bfcd3d709e37df3bd8b6&plugin=AMap.PlaceSearch,AMap.Geolocation"></script>
+    <script>
+        // 配置参数
+        const CONFIG = {
+            amapKey: "9de5d8be2e64bfcd3d709e37df3bd8b6", // 替换为你的高德Key
+            defaultTypes: "风景名胜|公园|博物馆",
+            defaultCity: "全国",
+            searchRadius: 5000 // 周边搜索半径(米)
+        };
+
+        // 全局变量
+        let map, amapSpots = [], currentMarker = null;
+
+        // 初始化地图
+        function initMap() {
+            map = new AMap.Map('map', {
                 zoom: 5,
-                center: [116.397, 39.918]
+                center: [116.397, 39.918],
+                viewMode: '2D'
             });
-    
+
             // 添加控件
             AMap.plugin(['AMap.ToolBar', 'AMap.Scale'], function() {
                 map.addControl(new AMap.ToolBar());
                 map.addControl(new AMap.Scale());
             });
-    
-            // 存储景点数据
-            let amapSpots = [];
-            let currentMarker = null;
-    
-            // 正确的位置获取方法
-            function locateUser() {
-                const geolocation = new AMap.Geolocation({
-                    enableHighAccuracy: true,
-                    timeout: 5000
-                });
-                
-                geolocation.getCurrentPosition((status, result) => {
-                    if (status === 'complete') {
-                        const lnglat = [result.position.lng, result.position.lat];
-                        map.setCenter(lnglat);
-                        map.setZoom(15);
-                        
-                        // 显示位置标记
-                        if (currentMarker) map.remove(currentMarker);
-                        currentMarker = new AMap.Marker({
-                            position: lnglat,
-                            content: '<div style="background:#4D6BFF;color:white;padding:5px;border-radius:50%">📍</div>'
-                        });
-                        map.add(currentMarker);
-                        
-                        // 搜索周边景点
-                        searchNearbySpots(lnglat);
-                    } else {
-                        alert('定位失败：' + result.message);
-                    }
-                });
-            }
-    
-            // 搜索周边景点
-            function searchNearbySpots(lnglat) {
-                const placeSearch = new AMap.PlaceSearch({
-                    type: '风景名胜|公园',
-                    pageSize: 20
-                });
-                
-                placeSearch.searchNearBy('', lnglat, 5000, (status, result) => {
-                    if (status === 'complete') {
-                        amapSpots = result.poiList.pois;
-                        document.getElementById('result').innerHTML = 
-                            `找到${amapSpots.length}个周边景点`;
-                    }
-                });
-            }
-    
-            // 随机推荐景点
-            function fetchRandomSpot() {
-                if (amapSpots.length === 0) {
-                    loadDefaultSpots();
-                    return;
+
+            // 加载初始数据
+            loadDefaultSpots();
+        }
+
+        // 加载默认景点数据
+        function loadDefaultSpots() {
+            document.getElementById('result').innerHTML = "正在加载景点数据...";
+            
+            const placeSearch = new AMap.PlaceSearch({
+                city: CONFIG.defaultCity,
+                type: CONFIG.defaultTypes,
+                pageSize: 30
+            });
+
+            placeSearch.search('公园', (status, result) => {
+                if (status === 'complete' && result.poiList && result.poiList.pois) {
+                    amapSpots = result.poiList.pois;
+                    document.getElementById('result').innerHTML = 
+                        `已加载${amapSpots.length}个景点，点击按钮随机推荐`;
+                    fetchRandomSpot();
+                } else {
+                    showError("数据加载失败，请检查网络或密钥配置");
                 }
-                
-                const spot = amapSpots[Math.floor(Math.random() * amapSpots.length)];
-                showSpot(spot);
+            });
+        }
+
+        // 显示错误信息
+        function showError(msg) {
+            document.getElementById('result').innerHTML = 
+                `<span class="error">${msg}</span>`;
+            console.error(msg);
+        }
+
+        // 随机推荐景点
+        function fetchRandomSpot() {
+            if (amapSpots.length === 0) {
+                showError("暂无景点数据，请先加载");
+                return;
             }
-    
-            // 显示景点
-            function showSpot(spot) {
-                if (currentMarker) map.remove(currentMarker);
-                
-                currentMarker = new AMap.Marker({
-                    position: [spot.location.lng, spot.location.lat],
-                    content: `<div style="background:#FF6B00;color:white;padding:5px 10px;border-radius:15px">
-                        ${spot.name}
-                    </div>`
-                });
-                map.add(currentMarker);
-                map.setCenter([spot.location.lng, spot.location.lat]);
-                
-                // 显示详情
-                document.getElementById('result').innerHTML = `
-                    <b>${spot.name}</b><br>
-                    地址：${spot.address}<br>
-                    ${spot.tel ? '电话：' + spot.tel : ''}
-                `;
-            }
-    
-            // 加载默认景点数据
-            function loadDefaultSpots() {
-                const placeSearch = new AMap.PlaceSearch({
-                    city: '全国',
-                    type: '风景名胜',
-                    pageSize: 50
-                });
-                
-                placeSearch.search('公园', (status, result) => {
-                    if (status === 'complete') {
-                        amapSpots = result.poiList.pois;
-                        fetchRandomSpot();
-                    }
-                });
-            }
-    
-            // 微信初始化适配
-            if (/MicroMessenger/i.test(navigator.userAgent)) {
-                document.addEventListener('WeixinJSBridgeReady', loadDefaultSpots, false);
-            } else {
-                window.onload = loadDefaultSpots;
-            }
-        </script>
-    </body>
-    </html>
+            
+            const spot = amapSpots[Math.floor(Math.random() * amapSpots.length)];
+            showSpot(spot);
+        }
+
+        // 显示景点详情
+        function showSpot(spot) {
+            // 清除旧标记
+            if (currentMarker) map.remove(currentMarker);
+            
+            // 创建新标记
+            currentMarker = new AMap.Marker({
+                position: [spot.location.lng, spot.location.lat],
+                content: `<div style="background:#FF6B00;color:white;padding:5px 10px;border-radius:15px">
+                    ${spot.name}
+                </div>`
+            });
+            map.add(currentMarker);
+            map.setCenter([spot.location.lng, spot.location.lat]);
+            
+            // 显示详情
+            let info = `<b>${spot.name}</b><br>地址：${spot.address}`;
+            if (spot.tel) info += `<br>电话：${spot.tel}`;
+            document.getElementById('result').innerHTML = info;
+        }
+
+        // 定位用户位置
+        function locateUser() {
+            document.getElementById('result').innerHTML = "正在获取位置...";
+            
+            const geolocation = new AMap.Geolocation({
+                enableHighAccuracy: true,
+                timeout: 5000
+            });
+            
+            geolocation.getCurrentPosition((status, result) => {
+                if (status === 'complete') {
+                    const lnglat = [result.position.lng, result.position.lat];
+                    map.setCenter(lnglat);
+                    map.setZoom(15);
+                    
+                    // 显示位置标记
+                    if (currentMarker) map.remove(currentMarker);
+                    currentMarker = new AMap.Marker({
+                        position: lnglat,
+                        content: '<div style="background:#4D6BFF;color:white;padding:5px;border-radius:50%">📍</div>'
+                    });
+                    map.add(currentMarker);
+                    
+                    // 搜索周边景点
+                    searchNearbySpots(lnglat);
+                } else {
+                    showError("定位失败：" + (result.message || "请检查定位权限"));
+                }
+            });
+        }
+
+        // 搜索周边景点
+        function searchNearbySpots(lnglat) {
+            document.getElementById('result').innerHTML = "正在搜索周边景点...";
+            
+            const placeSearch = new AMap.PlaceSearch({
+                type: CONFIG.defaultTypes,
+                pageSize: 20
+            });
+            
+            placeSearch.searchNearBy('', lnglat, CONFIG.searchRadius, (status, result) => {
+                if (status === 'complete' && result.poiList && result.poiList.pois) {
+                    amapSpots = result.poiList.pois;
+                    document.getElementById('result').innerHTML = 
+                        `找到${amapSpots.length}个周边景点`;
+                    fetchRandomSpot();
+                } else {
+                    showError("周边景点搜索失败");
+                }
+            });
+        }
+
+        // 微信环境初始化
+        if (/MicroMessenger/i.test(navigator.userAgent)) {
+            document.addEventListener('WeixinJSBridgeReady', initMap, false);
+            // 解决微信地图拖动问题
+            document.body.style['touch-action'] = 'none';
+        } else {
+            window.onload = initMap;
+        }
+    </script>
+</body>
+</html>
