@@ -26,6 +26,48 @@
     <!-- 高德地图API -->
     <script src="https://webapi.amap.com/maps?v=2.0&key=9de5d8be2e64bfcd3d709e37df3bd8b6&plugin=AMap.PlaceSearch,AMap.Geolocation"></script>
     <script>
+        // 新增调试函数
+        function checkAMapKey() {
+            return new Promise((resolve) => {
+                fetch(`https://restapi.amap.com/v3/ip?key=9de5d8be2e64bfcd3d709e37df3bd8b6`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.status === '1') {
+                            console.log("高德Key验证通过", data);
+                            resolve(true);
+                        } else {
+                            console.error("高德Key无效:", data);
+                            resolve(false);
+                        }
+                    })
+                    .catch(() => resolve(false));
+            });
+        }
+// 初始化逻辑改造
+async function initMap() {
+            const keyValid = await checkAMapKey();
+            if(!keyValid) {
+                showError("地图服务初始化失败，请检查Key配置");
+                return;
+            }
+
+            try {
+                map = new AMap.Map('map', {
+                    zoom: 5,
+                    center: [116.397, 39.918],
+                    viewMode: '2D'
+                });
+
+                // 强制设置高德安全域名（针对微信）
+                AMap.SecurityConfig = {
+                    securityJsCode: 'f64341c3e304ceda07dafdb2eb47976b' // 控制台->我的应用->安全密钥
+                };
+
+                // 其他初始化代码...
+            } catch(e) {
+                showError(`地图初始化错误: ${e.message}`);
+            }
+        }
         // 配置参数
         const CONFIG = {
             amapKey: "9de5d8be2e64bfcd3d709e37df3bd8b6", // 替换为你的高德Key
